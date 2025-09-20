@@ -180,6 +180,27 @@ impl Database {
                 created_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS gtp_engines (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                path TEXT NOT NULL,
+                args TEXT NOT NULL,
+                working_directory TEXT,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS gtp_sessions (
+                id TEXT PRIMARY KEY,
+                engine_id TEXT NOT NULL REFERENCES gtp_engines(id) ON DELETE CASCADE,
+                status TEXT NOT NULL,
+                pid INTEGER,
+                started_at TEXT,
+                stopped_at TEXT,
+                log_path TEXT
+            );
+
             CREATE TABLE IF NOT EXISTS sync_peers (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -192,6 +213,8 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_pairings_tournament_round ON pairings(tournament_id, round_index);
             CREATE INDEX IF NOT EXISTS idx_puzzle_attempts_player ON puzzle_attempts(player_id);
             CREATE INDEX IF NOT EXISTS idx_sync_events_entity ON sync_events(entity_type, entity_id, version);
+            CREATE INDEX IF NOT EXISTS idx_gtp_engines_enabled ON gtp_engines(enabled);
+            CREATE INDEX IF NOT EXISTS idx_gtp_sessions_engine ON gtp_sessions(engine_id);
         "#,
         )?;
 

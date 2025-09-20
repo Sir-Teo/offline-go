@@ -20,6 +20,7 @@ rusqlite = { version = "0.31.0", features = ["bundled", "chrono", "blob", "serde
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 go_rules = { path = "../crates/go_rules" }
+chrono = { version = "0.4", features = ["serde", "clock"] }
 thiserror = "1.0"
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"

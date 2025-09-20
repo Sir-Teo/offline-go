@@ -270,3 +270,179 @@ pub async fn fetch_sync_operations(
     .await
     .map_err(|err| AppError::other(format!("task join error: {err}")))?
 }
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GtpEngineInfo {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub args: Vec<String>,
+    pub working_directory: Option<String>,
+    pub enabled: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpsertGtpEngine {
+    pub id: Option<String>,
+    pub name: String,
+    pub path: String,
+    pub args: Option<Vec<String>>,
+    pub working_directory: Option<String>,
+    pub enabled: Option<bool>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GtpSessionInfo {
+    pub session_id: String,
+    pub engine_id: String,
+    pub status: String,
+    pub started_at: String,
+}
+
+#[tauri::command]
+pub async fn list_gtp_engines(state: State<'_, AppState>) -> AppResult<Vec<GtpEngineInfo>> {
+    let db = state.database().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        db.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, name, path, args, working_directory, enabled, created_at, updated_at FROM gtp_engines ORDER BY name",
+            )?;
+            let mut rows = stmt.query([])?;
+            let mut engines = Vec::new();
+            while let Some(row) = rows.next()? {
+                let args: String = row.get(3)?;
+                engines.push(GtpEngineInfo {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    path: row.get(2)?,
+                    args: serde_json::from_str(&args).unwrap_or_default(),
+                    working_directory: row.get(4)?,
+                    enabled: row.get::<_, i64>(5)? != 0,
+                    created_at: row.get(6)?,
+                    updated_at: row.get(7)?,
+                });
+            }
+            Ok(engines)
+        })
+    })
+    .await
+    .map_err(|err| AppError::other(format!("task join error: {err}")))?
+}
+
+#[tauri::command]
+pub async fn register_gtp_engine(
+    state: State<'_, AppState>,
+    payload: UpsertGtpEngine,
+) -> AppResult<GtpEngineInfo> {
+    let db = state.database().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        db.with_conn(|conn| {
+            let UpsertGtpEngine {
+                id,
+                name,
+                path,
+                args,
+                working_directory,
+                enabled,
+            } = payload;
+
+            let engine_id = id.unwrap_or_else(|| Uuid::new_v4().to_string());
+            let args_json = serde_json::to_string(&args.unwrap_or_default())?;
+            let enabled_flag = enabled.unwrap_or(true) as i64;
+
+            conn.execute(
+                "INSERT INTO gtp_engines (id, name, path, args, working_directory, enabled, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, COALESCE((SELECT created_at FROM gtp_engines WHERE id = ?1), CURRENT_TIMESTAMP), CURRENT_TIMESTAMP)
+                 ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    path = excluded.path,
+                    args = excluded.args,
+                    working_directory = excluded.working_directory,
+                    enabled = excluded.enabled,
+                    updated_at = CURRENT_TIMESTAMP",
+                params![engine_id, name, path, args_json, working_directory, enabled_flag],
+            )?;
+
+            let mut stmt = conn.prepare(
+                "SELECT id, name, path, args, working_directory, enabled, created_at, updated_at FROM gtp_engines WHERE id = ?1",
+            )?;
+            let engine = stmt.query_row(params![engine_id.clone()], |row| {
+                let args: String = row.get(3)?;
+                Ok(GtpEngineInfo {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    path: row.get(2)?,
+                    args: serde_json::from_str(&args).unwrap_or_default(),
+                    working_directory: row.get(4)?,
+                    enabled: row.get::<_, i64>(5)? != 0,
+                    created_at: row.get(6)?,
+                    updated_at: row.get(7)?,
+                })
+            })?;
+
+            Ok(engine)
+        })
+    })
+    .await
+    .map_err(|err| AppError::other(format!("task join error: {err}")))?
+}
+
+#[tauri::command]
+pub async fn remove_gtp_engine(state: State<'_, AppState>, engine_id: String) -> AppResult<()> {
+    let db = state.database().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        db.with_conn(|conn| {
+            conn.execute("DELETE FROM gtp_engines WHERE id = ?1", params![engine_id])?;
+            Ok(())
+        })
+    })
+    .await
+    .map_err(|err| AppError::other(format!("task join error: {err}")))?
+}
+
+#[tauri::command]
+pub async fn launch_gtp_engine(
+    state: State<'_, AppState>,
+    engine_id: String,
+) -> AppResult<GtpSessionInfo> {
+    let db = state.database().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        db.with_conn(|conn| {
+            let session_id = Uuid::new_v4().to_string();
+            let now = chrono::Utc::now().to_rfc3339();
+            conn.execute(
+                "INSERT INTO gtp_sessions (id, engine_id, status, started_at) VALUES (?1, ?2, ?3, ?4)",
+                params![session_id, engine_id, "pending", now],
+            )?;
+            Ok(GtpSessionInfo {
+                session_id,
+                engine_id,
+                status: "pending".to_string(),
+                started_at: now,
+            })
+        })
+    })
+    .await
+    .map_err(|err| AppError::other(format!("task join error: {err}")))?
+}
+
+#[tauri::command]
+pub async fn stop_gtp_engine(state: State<'_, AppState>, session_id: String) -> AppResult<()> {
+    let db = state.database().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        db.with_conn(|conn| {
+            conn.execute(
+                "UPDATE gtp_sessions SET status = ?2, stopped_at = CURRENT_TIMESTAMP WHERE id = ?1",
+                params![session_id, "stopped"],
+            )?;
+            Ok(())
+        })
+    })
+    .await
+    .map_err(|err| AppError::other(format!("task join error: {err}")))?
+}
