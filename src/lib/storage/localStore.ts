@@ -49,6 +49,17 @@ export interface PuzzleRecord {
   updatedAt: string;
 }
 
+export interface PendingOperation {
+  id?: number;
+  uuid: string;
+  entityType: string;
+  entityId: string;
+  op: "upsert" | "delete";
+  payload: unknown;
+  createdAt: string;
+}
+
+
 export interface SyncCursor {
   id: string;
   version: number;
@@ -60,6 +71,7 @@ export class OfflineGoCache extends Dexie {
   tournaments!: Table<TournamentRecord>;
   games!: Table<GameRecord>;
   puzzles!: Table<PuzzleRecord>;
+  pendingOps!: Table<PendingOperation>;
   syncCursor!: Table<SyncCursor>;
 
   constructor() {
@@ -69,6 +81,7 @@ export class OfflineGoCache extends Dexie {
       tournaments: "id, status, updatedAt",
       games: "id, tournamentId, roundIndex, updatedAt",
       puzzles: "id, digest, updatedAt",
+      pendingOps: "++id, createdAt, entityType, entityId",
       syncCursor: "id",
     });
   }

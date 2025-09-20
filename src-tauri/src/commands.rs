@@ -1,5 +1,7 @@
 use go_rules::{Color, GameConfig, Move, MoveOutcome, Point, ScoreSummary};
+use rusqlite::params;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tauri::State;
 use uuid::Uuid;
 
@@ -64,6 +66,29 @@ impl MovePayload {
             },
         ))
     }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncOperationInput {
+    pub id: String,
+    pub entity_type: String,
+    pub entity_id: String,
+    pub action: String,
+    pub payload: Value,
+    pub created_at: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncOperationRecord {
+    pub id: String,
+    pub entity_type: String,
+    pub entity_id: String,
+    pub op: String,
+    pub payload: Value,
+    pub version: i64,
+    pub created_at: String,
 }
 
 fn map_rules_error(err: RulesError) -> AppError {
@@ -153,4 +178,95 @@ pub async fn play_game_move(
 #[tauri::command]
 pub async fn score_game(state: State<'_, AppState>, game_id: Uuid) -> AppResult<ScoreSummary> {
     state.rules().score(game_id).map_err(map_rules_error)
+}
+
+/// Persist optimistic updates queued on the client.
+#[tauri::command]
+pub async fn push_sync_operations(
+    state: State<'_, AppState>,
+    operations: Vec<SyncOperationInput>,
+) -> AppResult<Vec<SyncOperationRecord>> {
+    if operations.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let db = state.database().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        db.with_conn(|conn| {
+            let tx = conn.unchecked_transaction()?;
+            let mut next_version: i64 = tx
+                .prepare("SELECT COALESCE(MAX(version), 0) FROM sync_events")?
+                .query_row([], |row| row.get(0))?;
+            let mut stmt = tx.prepare(
+                "INSERT INTO sync_events (id, entity_type, entity_id, action, payload, version, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            )?;
+            let mut inserted = Vec::with_capacity(operations.len());
+            for op in operations {
+                next_version += 1;
+                stmt.execute(params![
+                    op.id,
+                    op.entity_type,
+                    op.entity_id,
+                    op.action,
+                    op.payload,
+                    next_version,
+                    op.created_at,
+                ])?;
+                inserted.push(SyncOperationRecord {
+                    id: op.id,
+                    entity_type: op.entity_type,
+                    entity_id: op.entity_id,
+                    op: op.action,
+                    payload: op.payload,
+                    version: next_version,
+                    created_at: op.created_at,
+                });
+            }
+            tx.commit()?;
+            Ok(inserted)
+        })
+    })
+    .await
+    .map_err(|err| AppError::other(format!("task join error: {err}")))?
+}
+
+/// Fetch sync events newer than the supplied version.
+#[tauri::command]
+pub async fn fetch_sync_operations(
+    state: State<'_, AppState>,
+    since: Option<i64>,
+    limit: Option<u32>,
+) -> AppResult<Vec<SyncOperationRecord>> {
+    let db = state.database().clone();
+    let since_version = since.unwrap_or(0);
+    let capped_limit = limit.unwrap_or(64).clamp(1, 512) as i64;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        db.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, entity_type, entity_id, action, payload, version, created_at
+                 FROM sync_events
+                 WHERE version > ?1
+                 ORDER BY version ASC
+                 LIMIT ?2",
+            )?;
+            let mut rows = stmt.query(params![since_version, capped_limit])?;
+            let mut out = Vec::new();
+            while let Some(row) = rows.next()? {
+                out.push(SyncOperationRecord {
+                    id: row.get(0)?,
+                    entity_type: row.get(1)?,
+                    entity_id: row.get(2)?,
+                    op: row.get(3)?,
+                    payload: row.get(4)?,
+                    version: row.get(5)?,
+                    created_at: row.get(6)?,
+                });
+            }
+            Ok(out)
+        })
+    })
+    .await
+    .map_err(|err| AppError::other(format!("task join error: {err}")))?
 }

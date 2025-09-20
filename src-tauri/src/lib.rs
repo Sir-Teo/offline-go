@@ -29,6 +29,8 @@ pub fn run() {
             get_game_state,
             play_game_move,
             score_game,
+            push_sync_operations,
+            fetch_sync_operations,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

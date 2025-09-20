@@ -208,6 +208,14 @@ impl Database {
         &self.path
     }
 
+    pub fn with_conn<T, F>(&self, f: F) -> AppResult<T>
+    where
+        F: FnOnce(&Connection) -> AppResult<T>,
+    {
+        let conn = self.connection.lock();
+        f(&conn)
+    }
+
     pub fn schema_version(&self) -> AppResult<i64> {
         let conn = self.connection.lock();
         let value: String = conn
