@@ -5,6 +5,7 @@ use tauri::AppHandle;
 use crate::{
     db::Database,
     errors::{AppError, AppResult},
+    rules_registry::RulesRegistry,
 };
 
 #[derive(Clone)]
@@ -12,6 +13,7 @@ pub struct AppState {
     handle: AppHandle,
     data_dir: PathBuf,
     database: Database,
+    rules: RulesRegistry,
 }
 
 impl AppState {
@@ -25,11 +27,13 @@ impl AppState {
 
         let db_path = data_dir.join("offline_go.db3");
         let database = Database::connect(db_path)?;
+        let rules = RulesRegistry::new();
 
         Ok(Self {
             handle,
             data_dir,
             database,
+            rules,
         })
     }
 
@@ -43,5 +47,9 @@ impl AppState {
 
     pub fn handle(&self) -> &AppHandle {
         &self.handle
+    }
+
+    pub fn rules(&self) -> &RulesRegistry {
+        &self.rules
     }
 }

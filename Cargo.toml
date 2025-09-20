@@ -1,5 +1,6 @@
 [workspace]
 members = [
-  "src-tauri"
+  "src-tauri",
+  "crates/go_rules"
 ]
 resolver = "2"
