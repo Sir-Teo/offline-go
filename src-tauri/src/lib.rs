@@ -15,13 +15,16 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .setup(|app| -> tauri::Result<()> {
-            let handle = app.handle();
-            let state = AppState::new(handle.clone())
-                .map_err(|err| tauri::Error::from_anyhow(anyhow::anyhow!(err.to_string())))?;
-            app.manage(state);
-            Ok(())
-        })
+        .setup(
+            |app: &mut tauri::App| -> Result<(), Box<dyn std::error::Error>> {
+                let handle = app.handle();
+                let state = AppState::new(handle.clone()).map_err(|err| {
+                    Box::<dyn std::error::Error>::from(anyhow::anyhow!(err.to_string()))
+                })?;
+                app.manage(state);
+                Ok(())
+            },
+        )
         .invoke_handler(tauri::generate_handler![
             bootstrap_app,
             vacuum_database,

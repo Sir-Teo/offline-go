@@ -68,7 +68,7 @@ pub struct ScoreSummary {
     pub komi: f64,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct GameState {
     board: Board,
     to_move: Color,
@@ -79,7 +79,7 @@ pub struct GameState {
     moves: Vec<MoveRecord>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct MoveRecord {
     mv: Move,
     captured: Vec<Point>,

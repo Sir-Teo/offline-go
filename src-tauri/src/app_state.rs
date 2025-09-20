@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 use crate::{
     db::Database,
@@ -21,7 +21,7 @@ impl AppState {
         let mut data_dir = handle
             .path()
             .app_data_dir()
-            .ok_or_else(|| AppError::other("App data directory unavailable"))?;
+            .map_err(|err| AppError::other(err.to_string()))?;
         data_dir.push("offline-go");
         std::fs::create_dir_all(&data_dir)?;
 

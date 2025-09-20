@@ -223,6 +223,7 @@ pub async fn push_sync_operations(
                     created_at: op.created_at,
                 });
             }
+            drop(stmt);
             tx.commit()?;
             Ok(inserted)
         })

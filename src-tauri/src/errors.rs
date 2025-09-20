@@ -1,4 +1,6 @@
-use std::fmt::{self, Display};
+use serde::ser::Serializer;
+use serde::Serialize;
+use std::fmt::Display;
 
 #[derive(thiserror::Error, Debug)]
 pub enum AppError {
@@ -21,3 +23,12 @@ impl AppError {
 }
 
 pub type AppResult<T> = Result<T, AppError>;
+
+impl Serialize for AppError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}

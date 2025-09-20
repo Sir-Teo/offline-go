@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{color::Color, error::RuleViolation, point::Point, zobrist::ZobristTable};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Board {
     size: usize,
     cells: Vec<Option<Color>>,
@@ -10,6 +10,7 @@ pub struct Board {
     hash: u64,
 }
 
+#[derive(Debug)]
 pub struct GroupInfo {
     pub stones: Vec<usize>,
     pub liberties: Vec<usize>,
