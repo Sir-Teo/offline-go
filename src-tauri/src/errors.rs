@@ -32,3 +32,9 @@ impl Serialize for AppError {
         serializer.serialize_str(&self.to_string())
     }
 }
+
+impl From<tauri::Error> for AppError {
+    fn from(err: tauri::Error) -> Self {
+        Self::Other(err.to_string())
+    }
+}

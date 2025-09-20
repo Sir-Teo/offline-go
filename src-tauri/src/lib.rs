@@ -18,9 +18,8 @@ pub fn run() {
         .setup(
             |app: &mut tauri::App| -> Result<(), Box<dyn std::error::Error>> {
                 let handle = app.handle();
-                let state = AppState::new(handle.clone()).map_err(|err| {
-                    Box::<dyn std::error::Error>::from(anyhow::anyhow!(err.to_string()))
-                })?;
+                let state = AppState::new(handle.clone())
+                    .map_err(|err| -> Box<dyn std::error::Error> { Box::new(err) })?;
                 app.manage(state);
                 Ok(())
             },
