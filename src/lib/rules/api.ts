@@ -9,7 +9,15 @@ import type {
   StoneColor,
 } from "./types";
 
-export type { GameConfig, GameStateSnapshot, GameSummary, MoveOutcome, PointPayload, ScoreSummary, StoneColor };
+export type {
+  GameConfig,
+  GameStateSnapshot,
+  GameSummary,
+  MoveOutcome,
+  PointPayload,
+  ScoreSummary,
+  StoneColor,
+};
 
 export interface CreateGameOptions {
   size?: number;
@@ -18,7 +26,7 @@ export interface CreateGameOptions {
 }
 
 export async function createGame(options: CreateGameOptions = {}): Promise<GameStateSnapshot> {
-  const snapshot = await invoke<GameStateSnapshot>("create_game", { config: options });
+  const snapshot = await invoke("create_game", { config: options });
   return normalizeSnapshot(snapshot);
 }
 
@@ -27,7 +35,7 @@ export async function listGames(): Promise<GameSummary[]> {
 }
 
 export async function getGameState(gameId: string): Promise<GameStateSnapshot> {
-  const snapshot = await invoke<GameStateSnapshot>("get_game_state", { gameId });
+  const snapshot = await invoke("get_game_state", { gameId });
   return normalizeSnapshot(snapshot);
 }
 
@@ -36,7 +44,7 @@ export async function playMove(
   color: StoneColor,
   point: PointPayload | null,
 ): Promise<MoveOutcome> {
-  const outcome = await invoke<MoveOutcome>("play_game_move", {
+  const outcome = await invoke("play_game_move", {
     payload: {
       gameId,
       color,
@@ -50,37 +58,91 @@ export async function scoreGame(gameId: string): Promise<ScoreSummary> {
   return invoke<ScoreSummary>("score_game", { gameId });
 }
 
-function normalizeSnapshot(snapshot: GameStateSnapshot): GameStateSnapshot {
+function normalizeSnapshot(raw: any): GameStateSnapshot {
+  const board = normalizeBoard(raw.board ?? raw.board_snapshot);
+  const legalMoves = normalizePoints(raw.legalMoves ?? raw.legal_moves);
   return {
-    ...snapshot,
-    board: normalizeBoard(snapshot.board),
-    legalMoves: (snapshot.legalMoves ?? []).map(normalizePoint),
+    gameId: raw.gameId ?? raw.game_id ?? "",
+    board,
+    captures: normalizeCaptures(raw.captures),
+    toMove: normalizeColor(raw.toMove ?? raw.to_move),
+    legalMoves,
+    consecutivePasses: raw.consecutivePasses ?? raw.consecutive_passes ?? 0,
+    config: normalizeConfig(raw.config),
+    moveCount: raw.moveCount ?? raw.move_count ?? 0,
   };
 }
 
-function normalizeOutcome(outcome: MoveOutcome): MoveOutcome {
+function normalizeOutcome(raw: any): MoveOutcome {
+  const board = normalizeBoard(raw.board);
+  const legalMoves = normalizePoints(raw.legalMoves ?? raw.legal_moves);
+  const lastMove = raw.lastMove ?? raw.last_move;
   return {
-    ...outcome,
-    board: normalizeBoard(outcome.board),
-    legalMoves: (outcome.legalMoves ?? []).map(normalizePoint),
+    board,
+    captures: normalizeCaptures(raw.captures),
+    toMove: normalizeColor(raw.toMove ?? raw.to_move),
+    gameOver: Boolean(raw.gameOver ?? raw.game_over ?? false),
+    consecutivePasses: raw.consecutivePasses ?? raw.consecutive_passes ?? 0,
+    legalMoves,
     lastMove: {
-      ...outcome.lastMove,
       mv: {
-        color: outcome.lastMove.mv.color,
-        point: outcome.lastMove.mv.point ? normalizePoint(outcome.lastMove.mv.point) : null,
+        color: normalizeColor(lastMove?.mv?.color ?? lastMove?.move?.color ?? "black"),
+        point: lastMove?.mv?.point
+          ? normalizePoint(lastMove.mv.point)
+          : lastMove?.move?.point
+            ? normalizePoint(lastMove.move.point)
+            : null,
       },
-      captured: outcome.lastMove.captured.map(normalizePoint),
+      captured: normalizePoints(lastMove?.captured),
+      moveNumber: lastMove?.moveNumber ?? lastMove?.move_number ?? 0,
     },
-  };
+  } as MoveOutcome;
 }
 
-function normalizeBoard(board: GameStateSnapshot["board"]): GameStateSnapshot["board"] {
+function normalizeBoard(raw: any): GameStateSnapshot["board"] {
+  const size = raw?.size ?? 19;
+  const intersections = Array.isArray(raw?.intersections)
+    ? raw.intersections.map((value: unknown) =>
+        value === null ? null : (normalizeColor(value) as StoneColor),
+      )
+    : Array(size * size).fill(null);
+  return { size, intersections };
+}
+
+function normalizeConfig(raw: any | undefined): GameConfig {
+  if (!raw) {
+    return { size: 19, komi: 6.5, superko: true };
+  }
   return {
-    ...board,
-    intersections: board.intersections.map((value) => (value === null ? null : value)),
+    size: raw.size ?? raw.boardSize ?? 19,
+    komi: Number(raw.komi ?? 6.5),
+    superko: raw.superko ?? raw.superKo ?? true,
   };
 }
 
-function normalizePoint(point: PointPayload): PointPayload {
-  return { x: point.x, y: point.y };
+function normalizeCaptures(raw: any | undefined) {
+  return {
+    black: raw?.black ?? raw?.black_captures ?? 0,
+    white: raw?.white ?? raw?.white_captures ?? 0,
+  };
+}
+
+function normalizePoints(raw: any): PointPayload[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((point) => normalizePoint(point));
+}
+
+function normalizePoint(raw: any): PointPayload {
+  return {
+    x: Number(raw?.x ?? raw?.X ?? 0),
+    y: Number(raw?.y ?? raw?.Y ?? 0),
+  };
+}
+
+function normalizeColor(raw: any): StoneColor {
+  if (typeof raw === "string") {
+    const lower = raw.toLowerCase();
+    return lower === "white" ? "white" : "black";
+  }
+  return "black";
 }

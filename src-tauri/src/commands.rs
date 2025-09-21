@@ -34,6 +34,7 @@ impl CreateGameRequest {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PointPayload {
     pub x: usize,
     pub y: usize,
@@ -46,6 +47,7 @@ impl PointPayload {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MovePayload {
     pub game_id: Uuid,
     pub color: Color,
