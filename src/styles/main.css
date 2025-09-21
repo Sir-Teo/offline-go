@@ -209,3 +209,11 @@ button {
     transform-origin: top left;
   }
 }
+
+.go-board__cell.is-playable::before {
+  border-color: rgba(30, 157, 247, 0.35);
+}
+
+.go-board__cell.is-playable:hover::before {
+  border-color: rgba(30, 157, 247, 0.8);
+}

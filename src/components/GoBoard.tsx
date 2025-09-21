@@ -6,12 +6,17 @@ export interface GoBoardProps {
   lastMove?: PointPayload | null;
   disabled?: boolean;
   onPlay?: (point: PointPayload) => void;
+  canPlay?: (point: PointPayload) => boolean;
 }
 
-export function GoBoard({ size, intersections, lastMove, disabled, onPlay }: GoBoardProps) {
+export function GoBoard({ size, intersections, lastMove, disabled, onPlay, canPlay }: GoBoardProps) {
   const handleClick = (x: number, y: number) => {
     if (disabled || !onPlay) return;
-    onPlay({ x, y });
+    const point = { x, y };
+    if (canPlay && !canPlay(point)) {
+      return;
+    }
+    onPlay(point);
   };
 
   const cellSize = 32;
@@ -31,14 +36,15 @@ export function GoBoard({ size, intersections, lastMove, disabled, onPlay }: GoB
         const y = Math.floor(index / size);
         const stone = intersections[index];
         const isLast = lastMove && lastMove.x === x && lastMove.y === y;
+        const playable = canPlay ? canPlay({ x, y }) : true;
 
         return (
           <button
             key={`${x}-${y}`}
             type="button"
-            className={`go-board__cell${stone ? ` is-${stone}` : ""}${isLast ? " is-last" : ""}`}
+            className={`go-board__cell${stone ? ` is-${stone}` : ""}${isLast ? " is-last" : ""}${!stone && playable ? " is-playable" : ""}`}
             onClick={() => handleClick(x, y)}
-            disabled={disabled}
+            disabled={disabled || stone !== null || (canPlay ? !playable : false)}
             aria-label={`Cell ${x + 1},${y + 1}`}
           >
             <span className="go-board__hoshi" data-hoshi={Number(shouldShowHoshi(size, x, y))} />

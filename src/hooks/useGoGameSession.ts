@@ -3,6 +3,8 @@ import {
   createGame,
   GameStateSnapshot,
   MoveOutcome,
+  MoveRecordSnapshot,
+  ScoreSummary,
   playMove,
   PointPayload,
   scoreGame,
@@ -12,35 +14,38 @@ import {
 interface GoGameState {
   snapshot?: GameStateSnapshot;
   lastOutcome?: MoveOutcome;
+  history: MoveRecordSnapshot[];
+  scoreSummary?: ScoreSummary;
   loading: boolean;
   error?: string;
 }
 
-export function useGoGameSession(size: number = 19) {
-  const [state, setState] = useState<GoGameState>({ loading: true });
+export function useGoGameSession(size: number = 19, seed: number = 0) {
+  const [state, setState] = useState<GoGameState>({ loading: true, history: [] });
   const [gameId, setGameId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    setGameId(null);
+    setState({ loading: true, history: [] });
     async function boot() {
-      setState({ loading: true });
       try {
         const snapshot = await createGame({ size });
         if (cancelled) return;
         setGameId(snapshot.gameId);
-        setState({ snapshot, lastOutcome: undefined, loading: false });
+        setState({ snapshot, lastOutcome: undefined, history: [], scoreSummary: undefined, loading: false });
       } catch (err) {
         console.error("create game failed", err);
         if (!cancelled) {
-          setState({ loading: false, error: err instanceof Error ? err.message : String(err) });
+          setState({ loading: false, history: [], error: err instanceof Error ? err.message : String(err) });
         }
       }
     }
-    boot();
+    void boot();
     return () => {
       cancelled = true;
     };
-  }, [size]);
+  }, [size, seed]);
 
   const playAt = useCallback(
     async (point: PointPayload | null) => {
@@ -54,7 +59,7 @@ export function useGoGameSession(size: number = 19) {
       setState((prev) => ({ ...prev, loading: true }));
       try {
         const outcome = await playMove(gameId, snapshot.toMove, point);
-        setState({
+        setState((prev) => ({
           snapshot: {
             gameId,
             board: outcome.board,
@@ -66,8 +71,11 @@ export function useGoGameSession(size: number = 19) {
             moveCount: outcome.lastMove.moveNumber,
           },
           lastOutcome: outcome,
+          history: [...(prev.history ?? []), outcome.lastMove],
+          scoreSummary: undefined,
           loading: false,
-        });
+          error: undefined,
+        }));
       } catch (err) {
         console.error("play move failed", err);
         setState((prev) => ({
@@ -93,7 +101,9 @@ export function useGoGameSession(size: number = 19) {
   const score = useCallback(async () => {
     if (!gameId) return undefined;
     try {
-      return await scoreGame(gameId);
+      const summary = await scoreGame(gameId);
+      setState((prev) => ({ ...prev, scoreSummary: summary }));
+      return summary;
     } catch (err) {
       console.error("score failed", err);
       setState((prev) => ({
@@ -115,12 +125,14 @@ export function useGoGameSession(size: number = 19) {
     gameId,
     snapshot: state.snapshot,
     lastOutcome: state.lastOutcome,
+    history: state.history ?? [],
+    scoreSummary: state.scoreSummary,
     loading: state.loading,
     error: state.error,
     playStone,
     pass,
     score,
-    canPlay: (point: PointPayload) => legalSet.has(`${point.x},${point.y}`),
+    canPlay: (point: PointPayload) => legalSet.size === 0 || legalSet.has(`${point.x},${point.y}`),
     toMove: state.snapshot?.toMove ?? ("black" as StoneColor),
     lastMove,
   } as const;
