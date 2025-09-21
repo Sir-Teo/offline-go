@@ -54,7 +54,7 @@ function normalizeSnapshot(snapshot: GameStateSnapshot): GameStateSnapshot {
   return {
     ...snapshot,
     board: normalizeBoard(snapshot.board),
-    legalMoves: snapshot.legalMoves.map(normalizePoint),
+    legalMoves: (snapshot.legalMoves ?? []).map(normalizePoint),
   };
 }
 
@@ -62,7 +62,7 @@ function normalizeOutcome(outcome: MoveOutcome): MoveOutcome {
   return {
     ...outcome,
     board: normalizeBoard(outcome.board),
-    legalMoves: outcome.legalMoves.map(normalizePoint),
+    legalMoves: (outcome.legalMoves ?? []).map(normalizePoint),
     lastMove: {
       ...outcome.lastMove,
       mv: {
