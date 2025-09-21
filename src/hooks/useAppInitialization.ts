@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore, type BootstrapSummary } from "../state/appState";
 import { useSyncStore } from "../state/syncStore";
@@ -10,31 +10,34 @@ export function useAppInitialization() {
   const setError = useAppStore((state) => state.setError);
   const flushSync = useSyncStore((state) => state.flush);
   const pullSync = useSyncStore((state) => state.pull);
+  const bootstrappingRef = useRef(false);
 
   useEffect(() => {
-    let disposed = false;
+    if (bootstrappingRef.current || status === "ready") {
+      return;
+    }
+
+    bootstrappingRef.current = true;
+    let cancelled = false;
 
     async function run() {
-      if (status === "ready" || status === "loading") {
-        return;
-      }
-
       setStatus("loading");
 
       try {
         const summary = (await invoke("bootstrap_app")) as BootstrapSummary;
-        if (!disposed) {
-          setBootstrapInfo(summary);
-          try {
-            await flushSync();
-            await pullSync();
-          } catch (syncError) {
-            console.warn("initial sync failed", syncError);
-          }
+        if (cancelled) return;
+
+        setBootstrapInfo(summary);
+
+        try {
+          await flushSync();
+          await pullSync();
+        } catch (syncError) {
+          console.warn("initial sync failed", syncError);
         }
       } catch (err) {
         console.error("bootstrap failed", err);
-        if (!disposed) {
+        if (!cancelled) {
           setError(err instanceof Error ? err.message : String(err));
         }
       }
@@ -43,7 +46,8 @@ export function useAppInitialization() {
     run();
 
     return () => {
-      disposed = true;
+      cancelled = true;
+      bootstrappingRef.current = false;
     };
   }, [flushSync, pullSync, setBootstrapInfo, setError, setStatus, status]);
 

@@ -108,15 +108,20 @@ pub struct BootstrapSummary {
 /// Initialize the application: ensures the SQLite database is migrated and ready for use.
 #[tauri::command]
 pub async fn bootstrap_app(state: State<'_, AppState>) -> AppResult<BootstrapSummary> {
+    println!("bootstrap_app invoked");
     let db = state.database().clone();
     let data_dir = state.data_dir().clone();
 
-    tauri::async_runtime::spawn_blocking(move || db.apply_migrations())
-        .await
-        .map_err(|err| crate::errors::AppError::other(format!("task join error: {err}")))??;
+    tauri::async_runtime::spawn_blocking(move || {
+        println!("applying migrations on {:?}", db.path());
+        db.apply_migrations()
+    })
+    .await
+    .map_err(|err| crate::errors::AppError::other(format!("task join error: {err}")))??;
 
     let schema_version = state.database().schema_version()?;
     let database_path = state.database().path().display().to_string();
+    println!("bootstrap_app ready schema={schema_version}");
 
     Ok(BootstrapSummary {
         data_dir: data_dir.display().to_string(),

@@ -23,7 +23,7 @@ export function useGoGameSession(size: number = 19) {
   useEffect(() => {
     let cancelled = false;
     async function boot() {
-      setState((prev) => ({ ...prev, loading: true, error: undefined }));
+      setState({ loading: true });
       try {
         const snapshot = await createGame({ size });
         if (cancelled) return;
@@ -31,8 +31,9 @@ export function useGoGameSession(size: number = 19) {
         setState({ snapshot, lastOutcome: undefined, loading: false });
       } catch (err) {
         console.error("create game failed", err);
-        if (cancelled) return;
-        setState({ loading: false, error: err instanceof Error ? err.message : String(err) });
+        if (!cancelled) {
+          setState({ loading: false, error: err instanceof Error ? err.message : String(err) });
+        }
       }
     }
     boot();
@@ -43,10 +44,16 @@ export function useGoGameSession(size: number = 19) {
 
   const playAt = useCallback(
     async (point: PointPayload | null) => {
-      if (!gameId || !state.snapshot || state.loading) return;
+      if (!gameId || state.loading) return;
+      const snapshot = state.snapshot;
+      if (!snapshot) {
+        setState((prev) => ({ ...prev, error: "Game state missing" }));
+        return;
+      }
+
       setState((prev) => ({ ...prev, loading: true }));
       try {
-        const outcome = await playMove(gameId, state.snapshot.toMove, point);
+        const outcome = await playMove(gameId, snapshot.toMove, point);
         setState({
           snapshot: {
             gameId,
@@ -55,7 +62,7 @@ export function useGoGameSession(size: number = 19) {
             toMove: outcome.toMove,
             legalMoves: outcome.legalMoves,
             consecutivePasses: outcome.consecutivePasses,
-            config: state.snapshot.config,
+            config: snapshot.config,
             moveCount: outcome.lastMove.moveNumber,
           },
           lastOutcome: outcome,
@@ -97,11 +104,12 @@ export function useGoGameSession(size: number = 19) {
     }
   }, [gameId]);
 
-  const lastMove = state.lastOutcome?.lastMove;
   const legalSet = useMemo(() => {
     if (!state.snapshot) return new Set<string>();
-    return new Set(state.snapshot.legalMoves.map((pt) => `${pt.x},${pt.y}`));
+    return new Set((state.snapshot.legalMoves ?? []).map((pt) => `${pt.x},${pt.y}`));
   }, [state.snapshot]);
+
+  const lastMove = state.lastOutcome?.lastMove;
 
   return {
     gameId,
